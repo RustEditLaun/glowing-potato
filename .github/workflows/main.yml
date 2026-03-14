@@ -472,43 +472,21 @@ jobs:
           }
           
           Write-Host ""
-          Write-Host "Uploading files to $s3Path/..."
+          Write-Host "Uploading files using sync..."
           
-          # Загружаем PNG с подписями
-          if (Test-Path "maps\output.png") {
-            Write-Host "📤 Uploading output.png..."
-            aws s3 cp maps/output.png "s3://$bucket/$s3Path/output.png" --endpoint-url $endpoint
-            Write-Host "✅ output.png uploaded"
+          # Используем sync для загрузки всей папки
+          aws s3 sync maps/ "s3://$bucket/$s3Path/" --endpoint-url "$endpoint" --exclude "*" --include "*.png" --include "*.json"
+          
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ All files uploaded successfully!"
+          } else {
+            Write-Host "❌ Upload failed with exit code $LASTEXITCODE"
+            exit 1
           }
           
-          # Загружаем PNG без подписей
-          if (Test-Path "maps\output_no_labels.png") {
-            Write-Host "📤 Uploading output_no_labels.png..."
-            aws s3 cp maps/output_no_labels.png "s3://$bucket/$s3Path/output_no_labels.png" --endpoint-url $endpoint
-            Write-Host "✅ output_no_labels.png uploaded"
-          }
-          
-          # Загружаем MapLabels.json
-          if (Test-Path "maps\MapLabels.json") {
-            Write-Host "📤 Uploading MapLabels.json..."
-            aws s3 cp maps/MapLabels.json "s3://$bucket/$s3Path/MapLabels.json" --endpoint-url $endpoint --content-type "application/json"
-            Write-Host "✅ MapLabels.json uploaded"
-          }
-          
-          # Загружаем LootSpawns.json
-          if (Test-Path "maps\LootSpawns.json") {
-            Write-Host "📤 Uploading LootSpawns.json..."
-            aws s3 cp maps/LootSpawns.json "s3://$bucket/$s3Path/LootSpawns.json" --endpoint-url $endpoint --content-type "application/json"
-            Write-Host "✅ LootSpawns.json uploaded"
-          }
-          
-          Write-Host ""
-          Write-Host "✅ All files uploaded to R2 successfully!"
-          Write-Host "   Bucket: $bucket"
-          Write-Host "   Path: $s3Path/"
           Write-Host ""
           Write-Host "Verifying uploads..."
-          aws s3 ls "s3://$bucket/$s3Path/" --endpoint-url $endpoint
+          aws s3 ls "s3://$bucket/$s3Path/" --endpoint-url "$endpoint"
 
       - name: 🔔 Update Firebase with map URLs
         if: success()
