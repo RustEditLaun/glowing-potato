@@ -504,7 +504,11 @@ jobs:
           
           Write-Host ""
           Write-Host "✅ All files uploaded to R2 successfully!"
+          Write-Host "   Bucket: $bucket"
           Write-Host "   Path: $s3Path/"
+          Write-Host ""
+          Write-Host "Verifying uploads..."
+          aws s3 ls "s3://$bucket/$s3Path/" --endpoint-url $endpoint
 
       - name: 🔔 Update Firebase with map URLs
         if: success()
