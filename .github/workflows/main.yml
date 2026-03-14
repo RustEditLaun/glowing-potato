@@ -539,35 +539,64 @@ jobs:
           $firebase_url = $firebase_url.TrimEnd('/')
           $pub = $pub.TrimEnd('/')
           
-          $url = "$firebase_url/servers/$server_id.json?auth=$firebase_secret"
-          
           # Путь к папке снимка
           $basePath = "$pub/maps/rendered/$server_id/$ts"
           
-          $payload = @{
+          $mapFilesObj = @{
+            imageWithLabels = "$basePath/output.png"
+            imageNoLabels = "$basePath/output_no_labels.png"
+            mapLabels = "$basePath/MapLabels.json"
+            lootSpawns = "$basePath/LootSpawns.json"
+          }
+          
+          Write-Host "Base Path: $basePath"
+          Write-Host ""
+          
+          # 1. Обновляем основной объект сервера
+          Write-Host "📝 Updating server object..."
+          $serverUrl = "$firebase_url/servers/$server_id.json?auth=$firebase_secret"
+          
+          $serverPayload = @{
             hasGeneratedMap = $true
-            mapFiles = @{
-              imageWithLabels = "$basePath/output.png"
-              imageNoLabels = "$basePath/output_no_labels.png"
-              mapLabels = "$basePath/MapLabels.json"
-              lootSpawns = "$basePath/LootSpawns.json"
-            }
+            mapFiles = $mapFilesObj
             lastMapGeneration = [int64]$ts
           } | ConvertTo-Json -Depth 5
           
-          Write-Host "Firebase URL: $url"
-          Write-Host "Base Path: $basePath"
-          Write-Host "Payload:"
-          Write-Host $payload
+          try {
+            $response = Invoke-RestMethod -Uri $serverUrl -Method Patch -Body $serverPayload -ContentType "application/json"
+            Write-Host "✅ Server object updated!"
+          } catch {
+            Write-Host "❌ Server update failed: $($_.Exception.Message)"
+          }
+          
           Write-Host ""
           
+          # 2. Находим и обновляем последний снимок в истории
+          Write-Host "🔍 Finding latest history snapshot with timestamp $ts..."
+          $historyUrl = "$firebase_url/servers/$server_id/history.json?auth=$firebase_secret&orderBy=`"timestamp`"&equalTo=$ts"
+          
           try {
-            $response = Invoke-RestMethod -Uri $url -Method Patch -Body $payload -ContentType "application/json"
-            Write-Host "✅ Firebase updated successfully!"
-            Write-Host "Response: $($response | ConvertTo-Json)"
+            $historyData = Invoke-RestMethod -Uri $historyUrl -Method Get
+            
+            if ($historyData -and $historyData.PSObject.Properties.Count -gt 0) {
+              # Получаем ID первого (и единственного) снимка
+              $snapshotId = $historyData.PSObject.Properties.Name[0]
+              
+              Write-Host "✅ Found snapshot: $snapshotId"
+              Write-Host "📝 Updating snapshot with mapFiles..."
+              
+              $snapshotUrl = "$firebase_url/servers/$server_id/history/$snapshotId/mapFiles.json?auth=$firebase_secret"
+              $snapshotPayload = $mapFilesObj | ConvertTo-Json -Depth 5
+              
+              $response = Invoke-RestMethod -Uri $snapshotUrl -Method Put -Body $snapshotPayload -ContentType "application/json"
+              Write-Host "✅ Snapshot updated with mapFiles!"
+            } else {
+              Write-Host "⚠️ No snapshot found with timestamp $ts"
+              Write-Host "   Snapshot will be created by monitor on next check"
+            }
           } catch {
-            Write-Host "❌ Firebase update failed: $($_.Exception.Message)"
-            Write-Host "   This is not critical - maps are already uploaded to R2"
+            Write-Host "❌ Snapshot update failed: $($_.Exception.Message)"
+            Write-Host "   This is not critical - mapFiles are saved in server object"
           }
 
       - name: 📤 Upload map artifacts (backup)
