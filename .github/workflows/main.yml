@@ -573,26 +573,37 @@ jobs:
           
           # 2. Находим и обновляем последний снимок в истории
           Write-Host "🔍 Finding latest history snapshot with timestamp $ts..."
-          $historyUrl = "$firebase_url/servers/$server_id/history.json?auth=$firebase_secret&orderBy=`"timestamp`"&equalTo=$ts"
+          $historyUrl = "$firebase_url/servers/$server_id/history.json?auth=$firebase_secret"
           
           try {
             $historyData = Invoke-RestMethod -Uri $historyUrl -Method Get
             
-            if ($historyData -and $historyData.PSObject.Properties.Count -gt 0) {
-              # Получаем ID первого (и единственного) снимка
-              $snapshotId = $historyData.PSObject.Properties.Name[0]
+            if ($historyData) {
+              # Ищем снимок с нужным timestamp
+              $snapshotId = $null
+              foreach ($key in $historyData.PSObject.Properties.Name) {
+                $snapshot = $historyData.$key
+                if ($snapshot.timestamp -eq [int64]$ts) {
+                  $snapshotId = $key
+                  break
+                }
+              }
               
-              Write-Host "✅ Found snapshot: $snapshotId"
-              Write-Host "📝 Updating snapshot with mapFiles..."
-              
-              $snapshotUrl = "$firebase_url/servers/$server_id/history/$snapshotId/mapFiles.json?auth=$firebase_secret"
-              $snapshotPayload = $mapFilesObj | ConvertTo-Json -Depth 5
-              
-              $response = Invoke-RestMethod -Uri $snapshotUrl -Method Put -Body $snapshotPayload -ContentType "application/json"
-              Write-Host "✅ Snapshot updated with mapFiles!"
+              if ($snapshotId) {
+                Write-Host "✅ Found snapshot: $snapshotId"
+                Write-Host "📝 Updating snapshot with mapFiles..."
+                
+                $snapshotUrl = "$firebase_url/servers/$server_id/history/$snapshotId/mapFiles.json?auth=$firebase_secret"
+                $snapshotPayload = $mapFilesObj | ConvertTo-Json -Depth 5
+                
+                $response = Invoke-RestMethod -Uri $snapshotUrl -Method Put -Body $snapshotPayload -ContentType "application/json"
+                Write-Host "✅ Snapshot updated with mapFiles!"
+              } else {
+                Write-Host "⚠️ No snapshot found with timestamp $ts"
+                Write-Host "   Snapshot will be created by monitor on next check"
+              }
             } else {
-              Write-Host "⚠️ No snapshot found with timestamp $ts"
-              Write-Host "   Snapshot will be created by monitor on next check"
+              Write-Host "⚠️ No history data found"
             }
           } catch {
             Write-Host "❌ Snapshot update failed: $($_.Exception.Message)"
