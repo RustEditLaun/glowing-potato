@@ -451,8 +451,13 @@ jobs:
           $server_id = "${{ github.event.inputs.server_id }}"
           $ts = "${{ github.event.inputs.timestamp }}"
           
-          # Путь к папке снимка: maps/rendered/{server_id}/{timestamp}/
-          $s3Path = "maps/rendered/$server_id/$ts"
+          # Если bucket пустой, используем только путь
+          # Иначе добавляем bucket в начало
+          if ([string]::IsNullOrEmpty($bucket)) {
+            $s3Path = "maps/rendered/$server_id/$ts"
+          } else {
+            $s3Path = "$bucket/maps/rendered/$server_id/$ts"
+          }
           
           Write-Host "Server ID: $server_id"
           Write-Host "Timestamp: $ts"
@@ -485,7 +490,9 @@ jobs:
           foreach ($file in $files) {
             if (Test-Path $file.local) {
               Write-Host "📤 Uploading $($file.remote)..."
-              $s3Uri = "s3://$bucket/$s3Path/$($file.remote)"
+              $s3Uri = "s3://$s3Path/$($file.remote)"
+              
+              Write-Host "   Target: $s3Uri"
               
               aws s3 cp $file.local $s3Uri --endpoint-url $endpoint --content-type $file.type
               
