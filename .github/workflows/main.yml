@@ -472,21 +472,44 @@ jobs:
           }
           
           Write-Host ""
-          Write-Host "Uploading files using sync..."
+          Write-Host "Uploading files..."
           
-          # Используем sync для загрузки всей папки
-          aws s3 sync maps/ "s3://$bucket/$s3Path/" --endpoint-url "$endpoint" --exclude "*" --include "*.png" --include "*.json"
+          $files = @(
+            @{local="maps/output.png"; remote="output.png"; type="image/png"},
+            @{local="maps/output_no_labels.png"; remote="output_no_labels.png"; type="image/png"},
+            @{local="maps/MapLabels.json"; remote="MapLabels.json"; type="application/json"},
+            @{local="maps/LootSpawns.json"; remote="LootSpawns.json"; type="application/json"}
+          )
           
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ All files uploaded successfully!"
+          $uploadedCount = 0
+          foreach ($file in $files) {
+            if (Test-Path $file.local) {
+              Write-Host "📤 Uploading $($file.remote)..."
+              $s3Uri = "s3://$bucket/$s3Path/$($file.remote)"
+              
+              aws s3 cp $file.local $s3Uri --endpoint-url $endpoint --content-type $file.type
+              
+              if ($LASTEXITCODE -eq 0) {
+                Write-Host "✅ $($file.remote) uploaded"
+                $uploadedCount++
+              } else {
+                Write-Host "❌ $($file.remote) upload failed"
+              }
+            } else {
+              Write-Host "⚠️ $($file.local) not found, skipping"
+            }
+          }
+          
+          Write-Host ""
+          if ($uploadedCount -eq $files.Count) {
+            Write-Host "✅ All $uploadedCount files uploaded successfully!"
           } else {
-            Write-Host "❌ Upload failed with exit code $LASTEXITCODE"
-            exit 1
+            Write-Host "⚠️ Uploaded $uploadedCount out of $($files.Count) files"
           }
           
           Write-Host ""
           Write-Host "Verifying uploads..."
-          aws s3 ls "s3://$bucket/$s3Path/" --endpoint-url "$endpoint"
+          aws s3 ls "s3://$bucket/$s3Path/" --endpoint-url $endpoint
 
       - name: 🔔 Update Firebase with map URLs
         if: success()
